@@ -1,0 +1,406 @@
+﻿using AutoMapper;
+using GoLogs.Api.Application.Internals;
+using GoLogs.Api.BusinessLogic.Commands;
+using GoLogs.Api.BusinessLogic.Interfaces;
+using GoLogs.Api.Constants;
+using GoLogs.Api.Models;
+using GoLogs.Api.ViewModels;
+using Microsoft.EntityFrameworkCore;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Globalization;
+
+namespace GoLogs.Api.BusinessLogic.Handler
+{
+    public class EmailLogic : IEmailLogic
+    {
+        private readonly GoLogsContext _context;
+        private readonly IDeliveryOrderLogic _doLogic;
+        private readonly IMapper _mapper;
+        private readonly IEmailTemplateLogic _emailTemplateLogic;
+        private readonly IPersonLogic _personLogic;
+        private readonly INotifyLogic _notifyLogic;
+
+        public EmailLogic(
+            GoLogsContext context,
+            IDeliveryOrderLogic doLogic, 
+            IMapper mapper, 
+            IEmailTemplateLogic emailTemplateLogic,
+            IPersonLogic personLogic,
+            INotifyLogic notifyLogic)
+        {
+            _context = context;
+            _doLogic = doLogic;
+            _mapper = mapper;
+            _emailTemplateLogic = emailTemplateLogic;
+            _personLogic = personLogic;
+            _notifyLogic = notifyLogic;
+        }
+
+        private async Task<string> GetSignature()
+        {
+            var signatureM = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("Signature");
+            var signatureBody = signatureM.Template.Replace("@DownloadAppsUrl", Constant.GoLogsDomain + Constant.DownloadAppsUrl)
+                .Replace("@SupportUrl", Constant.GoLogsDomain + Constant.SupportUrl);
+            return signatureBody;
+        }
+
+        private async Task<string> GetContainers(List<DeliveryOrderContainerModel> model)
+        {
+            StringBuilder sb = new StringBuilder();
+            if (model.Count > 0)
+            {
+                foreach (var item in model)
+                {
+                    var container = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("ContainerRepeater");
+                    var containerTemplate = container.Template.Replace("@ContainerNo", item.ContainerNo)
+                        .Replace("@ContainerNo", item.ContainerNo)
+                        .Replace("@SealNo", item.SealNo)
+                        .Replace("@SizeType", item.ContainerType)
+                        .Replace("@GrossWeight", item.GrossWeight.ToString())
+                        //.Replace("@DepoName", item.DepoName)
+                        //.Replace("@PhoneNo", item.PhoneNumber);
+						.Replace("@LoadType", item.LoadType);
+                    sb.Append(containerTemplate);
+                }
+            }
+            return sb.ToString();
+        }
+
+        private async Task<string> GetStaticTemplate(PersonViewModel person, DeliveryOrderViewModel doView)
+        {
+            var staticM = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("StaticTemplate");
+            var staticBody = staticM.Template;
+            staticBody = staticBody.Replace("@FullName", person.FullName)
+                .Replace("@JobNo", doView.JobNumber)
+                .Replace("@SelectedService", "Delivery Order")
+                .Replace("@CreatedDate", doView.CreatedDate.ToString("dd MMM yyyy HH:mm"))
+                .Replace("@Status", doView.DeliveryOrderStatus)
+                .Replace("@CompanyName", person.Company.Name + "&nbsp;")
+                .Replace("@ShippingLineName", doView.ShippingLineName)
+                .Replace("@ShippingLineEmail", doView.ShippingLineEmail)
+                .Replace("@VesselName", doView.Vessel)
+                .Replace("@BLNo", doView.BillOfLadingNumber)
+                .Replace("@Consignee", doView.Consignee)
+                .Replace("@VesselCode", doView.Vessel)
+                .Replace("@BLNo", doView.BillOfLadingNumber)
+                .Replace("@VoyageNo", doView.VoyageNumber)
+                .Replace("@PortOfLoading", doView.PortOfLoading)
+                .Replace("@PortOfDischarge", doView.PortOfDischarge)
+                .Replace("@PortOfDelivery", doView.PortOfDelivery)
+                .Replace("@NotifyParty", doView.NotifyPartyName);
+            return staticBody;
+        }
+
+        private string ReplaceSubject(string subject, string jobNo, string companyName = null, string transNum = null)
+        {
+            subject = subject.Replace("@SelectedService", "Delivery Order")
+                .Replace("@JobNo", jobNo)
+                .Replace("@TransNum", transNum)
+				.Replace("@CompanyName", companyName);
+            return subject;
+        }
+
+        public async Task AfterDORequestAsync(EmailCommand command)
+        {
+            var selectedService = "Delivery Order";
+            var signature = await GetSignature();
+            var doView = await _doLogic.GetDOByJobNumberAsync(command.JobNumber);
+            var person = await _personLogic.GetPersonViewByIdAsync((Guid)doView.CustomerID);
+            var staticTemplate = await GetStaticTemplate(person, doView);
+
+            var BLCodeParam = Constant.BLCodeParam.Replace("@BLCodeParam", command.BLCode);
+
+            if (doView.DOContainerData.Count > 0)
+            {
+                var containerTemplate = await GetContainers(doView.DOContainerData);
+                staticTemplate = staticTemplate.Replace("@ContainerRepeater", containerTemplate);
+            }
+            else
+            {
+                staticTemplate = staticTemplate.Replace("@ContainerRepeater", "");
+            }
+
+            var cust = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("AfterDORequestCustomer");
+            var custSubject = ReplaceSubject(cust.Subject, doView.JobNumber);
+            var custBody = cust.Template + signature;
+            custBody = custBody.Replace("@FullName", person.FullName)
+                .Replace("@SelectedService", "Delivery Order")
+                .Replace("@StaticTemplate", staticTemplate)
+                .Replace("@StatusUrl", Constant.GoLogsAppDomain + "do-request/" + doView.Id);
+
+            var ship = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("AfterDORequestShippingLine");
+            var shipSubject = ReplaceSubject(ship.Subject, doView.JobNumber, person.Company.Name);
+            var shipBody = ship.Template + signature;
+            shipBody = shipBody.Replace("@ShippingLineName", doView.ShippingLineName)
+                .Replace("@CompanyName", person.Company.Name + "&nbsp;")
+                .Replace("@SelectedService", "Delivery Order")
+                .Replace("@StaticTemplate", staticTemplate)
+				.Replace("@DocumentUploadUrl", Constant.GoLogsAppDomain + "order/" + doView.Id)                
+                .Replace("@SupportUrl", Constant.GoLogsAppDomain + Constant.SupportUrl);
+
+            // To Customer
+            // Request Form Status
+            var custStepStatus = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("CustomerStep1");
+            custBody = custBody.Replace("@StepStatus", custStepStatus.Template);
+
+            await _notifyLogic.TransactionRequestAsync(selectedService, doView.JobNumber, doView.PersonData.Id);
+            GlobalHelper.SendEmailWithCC(doView.PersonData.Email, command.emailCC, custSubject, custBody);
+
+            // To ShippingLine
+            // Confirm Request Status
+            var shippingLineStepStatus = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("ShippingLineStep1");
+            shipBody = shipBody.Replace("@StepStatus", shippingLineStepStatus.Template);
+
+            GlobalHelper.SendEmailWithCC(doView.ShippingLineEmail, command.emailCC, shipSubject, shipBody);
+        }
+
+        public async Task AfterInvoiceAsync(EmailCommand command)
+        {
+            var selectedService = "Delivery Order";
+            var doView = await _doLogic.GetDOByJobNumberAsync(command.JobNumber);
+            var person = await _personLogic.GetPersonViewByIdAsync((Guid)doView.CustomerID);
+            var staticTemplate = await GetStaticTemplate(person, doView);
+
+            if (doView.DOContainerData.Count > 0)
+            {
+                var containerTemplate = await GetContainers(doView.DOContainerData);
+                staticTemplate = staticTemplate.Replace("@ContainerRepeater", containerTemplate);
+            }
+            else
+            {
+                staticTemplate = staticTemplate.Replace("@ContainerRepeater", "");
+            }
+
+            var cust = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("AfterInvoice");
+            var custSubject = ReplaceSubject(cust.Subject, doView.JobNumber);
+            var custBody = cust.Template + await GetSignature();
+			DateTime today = DateTime.Now;
+			DateTime timeLimit = today.AddHours(2);
+			string specifier;
+			CultureInfo culture;
+			specifier = "C";
+			culture = CultureInfo.CreateSpecificCulture("id-ID");
+			var proformaAmount = doView.ProformaInvoiceAmount.ToString(specifier, culture);
+			var totalAmount = doView.ProformaInvoiceAmount + 55000;
+            custBody = custBody.Replace("@FullName", person.FullName)
+                .Replace("@JobNo", doView.JobNumber)
+                .Replace("@SelectedService", "Delivery Order")
+                .Replace("@StaticTemplate", staticTemplate)
+				.Replace("@CompleteBeforeDate", timeLimit.ToString("dd MMMM yyyy HH:mm"))
+                .Replace("@BillingDetail",  Constant.GoLogsAppDomain + "do-request/" + doView.Id)
+				.Replace("@ConductPaymentUrl", Constant.GoLogsAppDomain + Constant.ConductPaymentUrl)
+                .Replace("@SupportUrl", Constant.GoLogsAppDomain + Constant.SupportUrl)
+				.Replace("@Amount", proformaAmount)
+				.Replace("@ServiceFee", "Rp 50.000")
+				.Replace("@AddedTax", "Rp 5.000")
+				.Replace("@TotalAmount", totalAmount.ToString(specifier, culture));
+
+            // To Customer
+            // Confirmation From Shipping Line Status
+            var custStepStatus = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("CustomerStep2");
+            custBody = custBody.Replace("@StepStatus", custStepStatus.Template);
+
+            await _notifyLogic.TransactionInvoiceAsync(selectedService, doView.JobNumber, doView.PersonData.Id);
+            GlobalHelper.SendEmailWithCC(doView.PersonData.Email, command.emailCC, custSubject, custBody);
+        }
+
+        public async Task AfterPaymentAsync(EmailCommand command)
+        {
+            var selectedService = "Delivery Order";
+            var signature = await GetSignature();
+            var doView = await _doLogic.GetDOByJobNumberAsync(command.JobNumber);
+            var person = await _personLogic.GetPersonViewByIdAsync((Guid)doView.CustomerID);
+            var staticTemplate = await GetStaticTemplate(person, doView);
+			var BLCodeParam = Constant.BLCodeParam.Replace("@BLCodeParam", command.BLCode);
+
+            if (doView.DOContainerData.Count > 0)
+            {
+                var containerTemplate = await GetContainers(doView.DOContainerData);
+                staticTemplate = staticTemplate.Replace("@ContainerRepeater", containerTemplate);
+            }
+            else
+            {
+                staticTemplate = staticTemplate.Replace("@ContainerRepeater", "");
+            }
+
+            var cust = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("AfterPaymentCustomer");
+            var custSubject = ReplaceSubject(cust.Subject, doView.JobNumber);
+            var custBody = cust.Template + signature;
+            custBody = custBody.Replace("@FullName", person.FullName)
+                .Replace("@JobNo", doView.JobNumber)
+                .Replace("@SelectedService", "Delivery Order")
+                .Replace("@StaticTemplate", staticTemplate)
+                .Replace("@PaymentUploadUrl", Constant.GoLogsAppDomain + Constant.PaymentUploadUrl + BLCodeParam + "tab=3")
+                .Replace("@SupportUrl", Constant.GoLogsAppDomain + Constant.SupportUrl);
+
+            var ship = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("AfterPaymentShippingLine");
+            var shipSubject = ReplaceSubject(ship.Subject, doView.JobNumber, person.Company.Name);
+            var shipBody = ship.Template + signature;
+            shipBody = shipBody.Replace("@ShippingLineName", doView.ShippingLineName)
+                .Replace("@CompanyName", person.Company.Name + "&nbsp;")
+                .Replace("@SelectedService", "Delivery Order")
+                .Replace("@StaticTemplate", staticTemplate)
+                .Replace("@DocumentUploadUrl", Constant.GoLogsAppDomain + Constant.DocumentUploadUrl + BLCodeParam + "tab=4");
+
+            // To Customer
+            // Proforma Invoice & Payment Confirmation Status
+            var custStepStatus = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("CustomerStep4");
+            custBody = custBody.Replace("@StepStatus", custStepStatus.Template);
+
+            await _notifyLogic.TransactionPaymentAsync(selectedService, doView.JobNumber, doView.PersonData.Id);
+            GlobalHelper.SendEmailWithCC(doView.PersonData.Email, command.emailCC, custSubject, custBody);
+
+            // To ShippingLine
+            // Payment Confirmation Status
+            var shippingLineStepStatus = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("ShippingLineStep3");
+            shipBody = shipBody.Replace("@StepStatus", shippingLineStepStatus.Template);
+
+            GlobalHelper.SendEmailWithCC(doView.ShippingLineEmail, command.emailCC, shipSubject, shipBody);
+        }
+
+        public async Task AfterDOReleaseAsync(EmailCommand command)
+        {
+            var selectedService = "Delivery Order";
+            var doView = await _doLogic.GetDOByJobNumberAsync(command.JobNumber);
+            var person = await _personLogic.GetPersonViewByIdAsync((Guid)doView.CustomerID);
+            var staticTemplate = await GetStaticTemplate(person, doView);
+
+            if (doView.DOContainerData.Count > 0)
+            {
+                var containerTemplate = await GetContainers(doView.DOContainerData);
+                staticTemplate = staticTemplate.Replace("@ContainerRepeater", containerTemplate);
+            }
+            else
+            {
+                staticTemplate = staticTemplate.Replace("@ContainerRepeater", "");
+            }
+
+            var cust = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("AfterDORelease");
+            var custSubject = ReplaceSubject(cust.Subject, doView.JobNumber);
+            var custBody = cust.Template + await GetSignature();
+            custBody = custBody.Replace("@FullName", person.FullName)
+                .Replace("@SelectedService", "Delivery Order")
+                .Replace("@StaticTemplate", staticTemplate)
+                .Replace("@DocumentUploadUrl", Constant.GoLogsAppDomain + "do-request/" + doView.Id)
+				.Replace("@StatusUrl", Constant.GoLogsAppDomain + "do-request/" + doView.Id)
+                .Replace("@SupportUrl", Constant.GoLogsAppDomain + Constant.SupportUrl)
+                .Replace("@SHOWDOURL", Constant.GoLogsAppDomain + "do-request/" + doView.Id);
+
+            // To Customer
+            // DO Release Status
+            var custStepStatus = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("CustomerStep5");
+            custBody = custBody.Replace("@StepStatus", custStepStatus.Template);
+
+            await _notifyLogic.TransactionReleaseAsync(selectedService, doView.JobNumber, doView.PersonData.Id);
+            GlobalHelper.SendEmailWithCC(doView.PersonData.Email, command.emailCC, custSubject, custBody);
+        }
+		
+		public async Task AfterInvoiceKojaAsync(EmailInvKojaCommand command)
+        {   
+			var cust = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("AfterInvoiceKoja");
+			var custSubject = ReplaceSubject(cust.Subject, "","",command.TransNum);
+            var custBody = cust.Template + await GetSignature();
+			DateTime today = DateTime.Now;
+			DateTime timeLimit = today.AddHours(2);
+			CultureInfo culture;
+			culture = CultureInfo.CreateSpecificCulture("id-ID");
+			var proformaAmount = double.Parse(command.InvAmount, System.Globalization.CultureInfo.InvariantCulture);
+			var totalAmount = proformaAmount + 165000;
+            custBody = custBody.Replace("@CustName", command.CustName)
+                .Replace("@TransNum", command.TransNum)
+				.Replace("@InvNum", command.InvNum)
+				.Replace("@InvAmount", "Rp " + command.InvAmount)
+				.Replace("@ServiceFee", "Rp 150.000")
+				.Replace("@VAT", "Rp 15.000")
+				.Replace("@TotalAmount", "Rp " + totalAmount.ToString())
+				.Replace("@CompleteBeforeDate", timeLimit.ToString("dd MMMM yyyy HH:mm"))
+                .Replace("@ConductPaymentUrl", Constant.GoLogsAppDomain + Constant.ConductPaymentUrl)
+				.Replace("@InvUrl", command.InvUrl)
+				.Replace("@SupportUrl", Constant.GoLogsDomain + Constant.SupportUrl);
+			GlobalHelper.SendEmailWithCC(command.CustEmail, command.emailCC, custSubject, custBody);
+        }
+		
+		public async Task GatePassAsync(EmailGatePassKojaCommand command)
+        {
+            var cust = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("GatePass");
+			var custSubject = ReplaceSubject(cust.Subject, "","",command.TransNum);
+            var custBody = cust.Template + await GetSignature();
+            custBody = custBody.Replace("@CustName", command.CustName)
+                .Replace("@TransNum", command.TransNum)
+				.Replace("@GPUrl", command.GPUrl)
+				.Replace("@SupportUrl", Constant.GoLogsDomain + Constant.SupportUrl);
+			GlobalHelper.SendEmailWithCC(command.CustEmail, command.emailCC, custSubject, custBody);
+        }
+
+        public async Task Activation(string activationCode)
+        {
+            try
+            {
+                var person = await _personLogic.GetPersonByActivationCodeAsync(activationCode);
+                
+                if (person == null)
+                {
+                    throw new ArgumentException(Constant.ErrorFromServer + "Activation Code does not exist.");
+                }
+                else
+                {
+                    if (person.Activated)
+                    {
+                        throw new ArgumentException(Constant.ErrorFromServer + "This customer has been activated.");
+                    }
+                    else
+                    {
+                        person.Activated = true;
+                        _context.Update(person);
+                        await _context.SaveChangesAsync();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+
+        public async Task ResendActivation(string email)
+        {
+            try
+            {
+                var person = await _personLogic.GetPersonByEmailAsync(email);
+
+                if (person == null)
+                {
+                    throw new ArgumentException(Constant.ErrorFromServer + "This customer does not exist.");
+                }
+                else
+                {
+                    if (person.Activated)
+                    {
+                        throw new ArgumentException(Constant.ErrorFromServer + "This customer has been activated.");
+                    }
+                    else
+                    {
+                        var activationUrl = Constant.GoLogsAppDomain + Constant.ActivationUrl + person.ActivationCode.ToString();
+                        var template = await _context.EmailTemplates.Where(x => x.Type == "AccountRegistration").FirstOrDefaultAsync();
+                        var signature = await _context.EmailTemplates.Where(x => x.Type == "Signature").FirstOrDefaultAsync();
+                        var body = template.Template + signature.Template;
+
+                        body = body.Replace("@FullName", person.FullName);
+                        body = body.Replace("@Email", person.Email);
+                        body = body.Replace("@ActivationUrl", activationUrl);
+
+                        GlobalHelper.SendEmail(person.Email, template.Subject, body);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+    }
+}
