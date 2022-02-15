@@ -402,5 +402,64 @@ namespace GoLogs.Api.BusinessLogic.Handler
                 throw ex;
             }
         }
+
+        public async Task AfterDelegateAsync(EmailCommand command)
+        {
+            try
+            {
+                string emailTo = null;
+                string customer = "pelanggan";
+                string service = "Delivery Order";
+                
+                var dEntity = await _context.DeliveryOrders
+                .Where(w => w.JobNumber == command.JobNumber &&
+                w.ServiceName != null &&
+                w.RowStatus == 1)
+                .SingleOrDefaultAsync();
+                
+                var sEntity = await _context.SP2
+                .Where(w => w.JobNumber == command.JobNumber &&
+                w.ServiceName != null &&
+                w.RowStatus == 1)
+                .SingleOrDefaultAsync();
+
+                if (dEntity == null && sEntity == null)
+                throw new Exception($"No delegate by jobnumber: {command.JobNumber}");
+
+                var contractNumber = dEntity != null ? dEntity.ContractNumber : sEntity.ContractNumber;
+                if (string.IsNullOrWhiteSpace(contractNumber))
+                {
+                    emailTo = command.emailCC[0];
+                }
+                else
+                {
+                    var cEntity = await _context.Contract
+                    .Where(w => w.ContractNumber == contractNumber)
+                    .SingleOrDefaultAsync();
+                    if (cEntity == null || string.IsNullOrWhiteSpace(cEntity.EmailPPJK))
+                    throw new Exception("This letter has no recipient");
+                    emailTo = cEntity.EmailPPJK;
+                }
+
+                customer = emailTo.Split('@')[0];
+                var idEntity = dEntity == null ? sEntity.Id : dEntity.Id;
+
+                var dEmail = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("Delegate");
+                var dSubject = dEmail.Subject
+                    .Replace("@FFPPJKCompanyName", customer)
+                    .Replace("@JobNumber", command.JobNumber);
+                var dBody = dEmail.Template
+                    .Replace("@CustomerName", customer)
+                    .Replace("@ServiceName", service)
+                    .Replace("@JobNumer", command.JobNumber)
+                    .Replace("@DetailUrl", Constant.GoLogsAppDomain + "delegate/" + idEntity);
+
+                GlobalHelper.SendEmailWithCC(emailTo, command.emailCC, dSubject, dBody);
+            }
+            catch (System.Exception se)
+            {
+                throw se;
+            }
+        }
     }
 }

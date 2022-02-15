@@ -28,6 +28,8 @@ namespace GoLogs.Api.Application.Internals
         public DbSet<DeliveryOrderContainerModel> DeliveryOrderContainers { get; set; }
         public DbSet<NotifyTemplateModel> NotifyTemplates { get; set; }
         public DbSet<NotifyModel> Notifies { get; set; }
+        public DbSet<SP2Model> SP2 { get; set; }
+        public DbSet<ContractModel> Contract { get; set; }
 
         public override Task<int> SaveChangesAsync(
             bool acceptAllChangesOnSuccess,

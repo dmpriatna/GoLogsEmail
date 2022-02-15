@@ -205,6 +205,21 @@ namespace GoLogs.Api.Controllers
             }
         }
 
+        [AllowAnonymous, HttpPost, Route("[action]")]
+        public async Task<ActionResult> DelegateAsync([FromBody] EmailCommand command)
+        {
+            try
+            {
+                await _emailLogic.AfterDelegateAsync(command);
+                return Ok("Success");
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+
         [HttpPost]
         [Route("CreateUpdateEmailTemplate")]
         public async Task<ActionResult> CreateUpdateEmailTemplateAsync([FromBody] EmailTemplateCommand command)

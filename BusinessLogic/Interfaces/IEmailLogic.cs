@@ -5,6 +5,7 @@ namespace GoLogs.Api.BusinessLogic.Interfaces
 {
     public interface IEmailLogic
     {
+        Task AfterDelegateAsync(EmailCommand command);
         Task AfterDORequestAsync(EmailCommand command);
         Task AfterInvoiceAsync(EmailCommand command);
         Task AfterPaymentAsync(EmailCommand command);

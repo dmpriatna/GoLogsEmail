@@ -26,5 +26,8 @@ namespace GoLogs.Api.Models
         public string NotifyPartyAdress { get; set; }
 		public double ProformaInvoiceAmount { get; set; }
         public Guid? CustomerID { get; set; }
+
+        public string ContractNumber { get; set; }
+        public string ServiceName { get; set; }
     }
 }
