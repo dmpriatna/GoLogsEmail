@@ -29,5 +29,6 @@ namespace GoLogs.Api.Models
 
         public string ContractNumber { get; set; }
         public string ServiceName { get; set; }
+        public string PositionStatusName { get; set; }
     }
 }

@@ -442,7 +442,11 @@ namespace GoLogs.Api.BusinessLogic.Handler
                 }
 
                 customer = emailTo.Split('@')[0];
+                service = dEntity == null ? "SP2" : service;
                 var idEntity = dEntity == null ? sEntity.Id : dEntity.Id;
+                var requestor = dEntity == null ? sEntity.CreatedBy : dEntity.CreatedBy;
+                var createdDate = dEntity == null ? sEntity.CreatedDate : dEntity.CreatedDate;
+                var status = dEntity == null ? sEntity.PositionStatusName : dEntity.PositionStatusName;
 
                 var dEmail = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("Delegate");
                 var dSubject = dEmail.Subject
@@ -452,6 +456,12 @@ namespace GoLogs.Api.BusinessLogic.Handler
                     .Replace("@CustomerName", customer)
                     .Replace("@ServiceName", service)
                     .Replace("@JobNumer", command.JobNumber)
+                    .Replace("@No", "1")
+                    .Replace("@Requestor", requestor)
+                    .Replace("@DelegateTo", emailTo)
+                    .Replace("@DelegateService", service)
+                    .Replace("@CreatedDate", createdDate.ToString())
+                    .Replace("@Status", status)
                     .Replace("@DetailUrl", Constant.GoLogsAppDomain + "delegate/" + idEntity);
 
                 GlobalHelper.SendEmailWithCC(emailTo, command.emailCC, dSubject, dBody);
@@ -460,6 +470,60 @@ namespace GoLogs.Api.BusinessLogic.Handler
             {
                 throw se;
             }
+        }
+
+        public async Task AfterDORequestDelegateAsync(EmailCommand command)
+        {
+            var selectedService = "Delivery Order";
+            var signature = await GetSignature();
+            var doView = await _doLogic.GetDOByJobNumberAsync(command.JobNumber);
+            var person = await _personLogic.GetPersonViewByIdAsync((Guid)doView.CustomerID);
+            var staticTemplate = await GetStaticTemplate(person, doView);
+
+            var BLCodeParam = Constant.BLCodeParam.Replace("@BLCodeParam", command.BLCode);
+
+            if (doView.DOContainerData.Count > 0)
+            {
+                var containerTemplate = await GetContainers(doView.DOContainerData);
+                staticTemplate = staticTemplate.Replace("@ContainerRepeater", containerTemplate);
+            }
+            else
+            {
+                staticTemplate = staticTemplate.Replace("@ContainerRepeater", "");
+            }
+
+            var cust = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("AfterDORequestCustomer");
+            var custSubject = ReplaceSubject(cust.Subject, doView.JobNumber);
+            var custBody = cust.Template + signature;
+            custBody = custBody.Replace("@FullName", person.FullName)
+                .Replace("@SelectedService", "Delivery Order")
+                .Replace("@StaticTemplate", staticTemplate)
+                .Replace("@StatusUrl", Constant.GoLogsAppDomain + "do-request/" + doView.Id);
+
+            var ship = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("AfterDORequestShippingLine");
+            var shipSubject = ReplaceSubject(ship.Subject, doView.JobNumber, person.Company.Name);
+            var shipBody = ship.Template + signature;
+            shipBody = shipBody.Replace("@ShippingLineName", doView.ShippingLineName)
+                .Replace("@CompanyName", person.Company.Name + "&nbsp;")
+                .Replace("@SelectedService", "Delivery Order")
+                .Replace("@StaticTemplate", staticTemplate)
+				.Replace("@DocumentUploadUrl", Constant.GoLogsAppDomain + "order/" + doView.Id)                
+                .Replace("@SupportUrl", Constant.GoLogsAppDomain + Constant.SupportUrl);
+
+            // To Customer
+            // Request Form Status
+            var custStepStatus = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("CustomerStep1");
+            custBody = custBody.Replace("@StepStatus", custStepStatus.Template);
+
+            await _notifyLogic.TransactionRequestAsync(selectedService, doView.JobNumber, doView.PersonData.Id);
+            GlobalHelper.SendEmailWithCC(doView.PersonData.Email, command.emailCC, custSubject, custBody);
+
+            // To ShippingLine
+            // Confirm Request Status
+            var shippingLineStepStatus = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("ShippingLineStep1");
+            shipBody = shipBody.Replace("@StepStatus", shippingLineStepStatus.Template);
+
+            GlobalHelper.SendEmailWithCC(doView.ShippingLineEmail, command.emailCC, shipSubject, shipBody);
         }
     }
 }
