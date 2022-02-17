@@ -95,6 +95,31 @@ namespace GoLogs.Api.BusinessLogic.Handler
             return staticBody;
         }
 
+        private async Task<string> GetStaticTemplate(DeliveryOrderViewModel doView, string FullName, string CompanyName)
+        {
+            var staticM = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("StaticTemplate");
+            var staticBody = staticM.Template;
+            staticBody = staticBody.Replace("@FullName", FullName)
+                .Replace("@JobNo", doView.JobNumber)
+                .Replace("@SelectedService", "Delivery Order")
+                .Replace("@CreatedDate", doView.CreatedDate.ToString("dd MMM yyyy HH:mm"))
+                .Replace("@Status", doView.DeliveryOrderStatus)
+                .Replace("@CompanyName", CompanyName + "&nbsp;")
+                .Replace("@ShippingLineName", doView.ShippingLineName)
+                .Replace("@ShippingLineEmail", doView.ShippingLineEmail)
+                .Replace("@VesselName", doView.Vessel)
+                .Replace("@BLNo", doView.BillOfLadingNumber)
+                .Replace("@Consignee", doView.Consignee)
+                .Replace("@VesselCode", doView.Vessel)
+                .Replace("@BLNo", doView.BillOfLadingNumber)
+                .Replace("@VoyageNo", doView.VoyageNumber)
+                .Replace("@PortOfLoading", doView.PortOfLoading)
+                .Replace("@PortOfDischarge", doView.PortOfDischarge)
+                .Replace("@PortOfDelivery", doView.PortOfDelivery)
+                .Replace("@NotifyParty", doView.NotifyPartyName);
+            return staticBody;
+        }
+
         private string ReplaceSubject(string subject, string jobNo, string companyName = null, string transNum = null)
         {
             subject = subject.Replace("@SelectedService", "Delivery Order")
@@ -424,12 +449,14 @@ namespace GoLogs.Api.BusinessLogic.Handler
                 .SingleOrDefaultAsync();
 
                 if (dEntity == null && sEntity == null)
-                throw new Exception($"No delegate by jobnumber: {command.JobNumber}");
+                throw new ArgumentException($"{Constant.ErrorFromServer}No delegate by jobnumber: {command.JobNumber}");
 
                 var contractNumber = dEntity != null ? dEntity.ContractNumber : sEntity.ContractNumber;
                 if (string.IsNullOrWhiteSpace(contractNumber))
                 {
+                    if (command.emailCC.Count < 1) return; // Tidak ada alamat email penerima.
                     emailTo = command.emailCC[0];
+                    command.emailCC.RemoveAt(0);
                 }
                 else
                 {
@@ -437,11 +464,23 @@ namespace GoLogs.Api.BusinessLogic.Handler
                     .Where(w => w.ContractNumber == contractNumber)
                     .SingleOrDefaultAsync();
                     if (cEntity == null || string.IsNullOrWhiteSpace(cEntity.EmailPPJK))
-                    throw new Exception("This letter has no recipient");
-                    emailTo = cEntity.EmailPPJK;
+                    {
+                        if (command.emailCC.Count < 1) return; // Tidak ada alamat email penerima.
+                        emailTo = command.emailCC[0];
+                        if (command.emailCC.Count > 1)
+                        command.emailCC.RemoveAt(0);
+                    }
+                    else
+                    {
+                        emailTo = cEntity.EmailPPJK;
+                    }
                 }
 
-                customer = emailTo.Split('@')[0];
+                var personEntity = await _context.Persons
+                .Where(w => w.Email == emailTo)
+                .SingleOrDefaultAsync();
+
+                customer = personEntity == null ? emailTo.Split('@')[0] : personEntity.FullName;
                 service = dEntity == null ? "SP2" : service;
                 var idEntity = dEntity == null ? sEntity.Id : dEntity.Id;
                 var requestor = dEntity == null ? sEntity.CreatedBy : dEntity.CreatedBy;
@@ -476,9 +515,48 @@ namespace GoLogs.Api.BusinessLogic.Handler
         {
             var selectedService = "Delivery Order";
             var signature = await GetSignature();
-            var doView = await _doLogic.GetDOByJobNumberAsync(command.JobNumber);
-            var person = await _personLogic.GetPersonViewByIdAsync((Guid)doView.CustomerID);
-            var staticTemplate = await GetStaticTemplate(person, doView);
+            string fullname = "";
+            string emailTo = "";
+
+            var dEntity = await _context.DeliveryOrders
+                .Where(w => w.JobNumber == command.JobNumber &&
+                w.ServiceName != null &&
+                w.RowStatus == 1)
+                .SingleOrDefaultAsync();
+
+            if (dEntity == null)
+            throw new ArgumentException(Constant.ErrorFromServer + "Delivery Order does not exist.");
+
+            var containerEntity = await _context.DeliveryOrderContainers
+            .Where(w => w.DeliveryOrderId == dEntity.Id)
+            .ToListAsync();
+
+            var contractEntity = await _context.Contract
+            .Where(w => w.ContractNumber == dEntity.ContractNumber)
+            .SingleOrDefaultAsync();
+
+            if (contractEntity == null || string.IsNullOrWhiteSpace(contractEntity.EmailPPJK))
+            {
+                if (command.emailCC.Count < 1) return; // Tidak ada alamat email penerima.
+                emailTo = command.emailCC[0];
+                if (command.emailCC.Count > 1)
+                command.emailCC.RemoveAt(0);
+            }
+            else
+            {
+                emailTo = contractEntity.EmailPPJK;
+            }
+
+            var personEntity = await _context.Persons
+            .Where(w => w.Email == emailTo)
+            .SingleOrDefaultAsync();
+
+            fullname = personEntity == null ? emailTo.Split('@')[0] : personEntity.FullName;
+
+            var doView = _mapper.Map<DeliveryOrderModel, DeliveryOrderViewModel>(dEntity);
+            doView.DOContainerData = containerEntity;
+
+            var staticTemplate = await GetStaticTemplate(doView, fullname, dEntity.FrieghtForwarderName);
 
             var BLCodeParam = Constant.BLCodeParam.Replace("@BLCodeParam", command.BLCode);
 
@@ -495,17 +573,17 @@ namespace GoLogs.Api.BusinessLogic.Handler
             var cust = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("AfterDORequestCustomer");
             var custSubject = ReplaceSubject(cust.Subject, doView.JobNumber);
             var custBody = cust.Template + signature;
-            custBody = custBody.Replace("@FullName", person.FullName)
-                .Replace("@SelectedService", "Delivery Order")
+            custBody = custBody.Replace("@FullName", fullname)
+                .Replace("@SelectedService", selectedService)
                 .Replace("@StaticTemplate", staticTemplate)
                 .Replace("@StatusUrl", Constant.GoLogsAppDomain + "do-request/" + doView.Id);
 
             var ship = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("AfterDORequestShippingLine");
-            var shipSubject = ReplaceSubject(ship.Subject, doView.JobNumber, person.Company.Name);
+            var shipSubject = ReplaceSubject(ship.Subject, doView.JobNumber, dEntity.FrieghtForwarderName);
             var shipBody = ship.Template + signature;
             shipBody = shipBody.Replace("@ShippingLineName", doView.ShippingLineName)
-                .Replace("@CompanyName", person.Company.Name + "&nbsp;")
-                .Replace("@SelectedService", "Delivery Order")
+                .Replace("@CompanyName", dEntity.FrieghtForwarderName + "&nbsp;")
+                .Replace("@SelectedService", selectedService)
                 .Replace("@StaticTemplate", staticTemplate)
 				.Replace("@DocumentUploadUrl", Constant.GoLogsAppDomain + "order/" + doView.Id)                
                 .Replace("@SupportUrl", Constant.GoLogsAppDomain + Constant.SupportUrl);
@@ -515,15 +593,16 @@ namespace GoLogs.Api.BusinessLogic.Handler
             var custStepStatus = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("CustomerStep1");
             custBody = custBody.Replace("@StepStatus", custStepStatus.Template);
 
-            await _notifyLogic.TransactionRequestAsync(selectedService, doView.JobNumber, doView.PersonData.Id);
-            GlobalHelper.SendEmailWithCC(doView.PersonData.Email, command.emailCC, custSubject, custBody);
+            if (personEntity != null)
+            await _notifyLogic.TransactionRequestAsync(selectedService, doView.JobNumber, personEntity.Id);
+            GlobalHelper.SendEmailWithCC(emailTo, command.emailCC, custSubject, custBody);
 
             // To ShippingLine
             // Confirm Request Status
             var shippingLineStepStatus = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("ShippingLineStep1");
             shipBody = shipBody.Replace("@StepStatus", shippingLineStepStatus.Template);
 
-            GlobalHelper.SendEmailWithCC(doView.ShippingLineEmail, command.emailCC, shipSubject, shipBody);
+            GlobalHelper.SendEmailWithCC(emailTo, command.emailCC, shipSubject, shipBody);
         }
     }
 }
