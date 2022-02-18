@@ -205,35 +205,6 @@ namespace GoLogs.Api.Controllers
             }
         }
 
-        [AllowAnonymous, HttpPost, Route("[action]")]
-        public async Task<ActionResult> DelegateAsync([FromBody] EmailCommand command)
-        {
-            try
-            {
-                await _emailLogic.AfterDelegateAsync(command);
-                return Ok("Success");
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(ex.Message);
-            }
-        }
-
-        [AllowAnonymous, HttpPost, Route("[action]")]
-        public async Task<ActionResult> AfterDORequestDelegateAsync([FromBody] EmailCommand command)
-        {
-            try
-            {
-                await _emailLogic.AfterDORequestDelegateAsync(command);
-                return Ok("Success");
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(ex.Message);
-            }
-        }
-
-
         [HttpPost]
         [Route("CreateUpdateEmailTemplate")]
         public async Task<ActionResult> CreateUpdateEmailTemplateAsync([FromBody] EmailTemplateCommand command)
@@ -274,6 +245,82 @@ namespace GoLogs.Api.Controllers
             {
                 var result = await _emailTemplateLogic.GetAllEmailTemplateAsync();
                 return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [AllowAnonymous, HttpPost, Route("[action]")]
+        public async Task<ActionResult> DelegateAsync([FromBody] EmailCommand command)
+        {
+            try
+            {
+                if (command == null) return BadRequest(Constant.ErrorFromServer + "Invalid client request");
+                await _emailLogic.AfterDelegateAsync(command);
+                return Ok("Success");
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [AllowAnonymous, HttpPost, Route("[action]")]
+        public async Task<ActionResult> AfterDORequestDelegateAsync([FromBody] EmailCommand command)
+        {
+            try
+            {
+                if (command == null) return BadRequest(Constant.ErrorFromServer + "Invalid client request");
+                if (string.IsNullOrEmpty(command.BLCode)) return BadRequest(Constant.ErrorFromServer + "BL Number is required");
+                await _emailLogic.AfterDORequestDelegateAsync(command);
+                return Ok("Success");
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [AllowAnonymous, HttpPost, Route("[action]")]
+        public async Task<ActionResult> AfterInvoiceDelegateAsync([FromBody] EmailCommand command)
+        {
+            try
+            {
+                if (command == null) return BadRequest(Constant.ErrorFromServer + "Invalid client request");
+                await _emailLogic.AfterInvoiceDelegateAsync(command);
+                return Ok("Success");
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [AllowAnonymous, HttpPost, Route("[action]")]
+        public async Task<ActionResult> AfterPaymentDelegateAsync([FromBody] EmailCommand command)
+        {
+            try
+            {
+                if (command == null) return BadRequest(Constant.ErrorFromServer + "Invalid client request");
+                await _emailLogic.AfterPaymentDelegateAsync(command);
+                return Ok("Success");
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [AllowAnonymous, HttpPost, Route("[action]")]
+        public async Task<ActionResult> AfterDOReleaseDelegateAsync([FromBody] EmailCommand command)
+        {
+            try
+            {
+                if (command == null) return BadRequest(Constant.ErrorFromServer + "Invalid client request");
+                await _emailLogic.AfterDOReleaseDelegateAsync(command);
+                return Ok("Success");
             }
             catch (Exception ex)
             {
