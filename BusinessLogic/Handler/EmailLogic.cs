@@ -452,16 +452,15 @@ namespace GoLogs.Api.BusinessLogic.Handler
             .Where(w => w.DeliveryOrderId == doEntity.Id)
             .ToListAsync();
 
+            if (string.IsNullOrWhiteSpace(doEntity.ContractNumber)) return; // Tidak ada alamat email penerima.
+
             var contractEntity = await _context.Contract
             .Where(w => w.ContractNumber == doEntity.ContractNumber)
             .SingleOrDefaultAsync();
 
             if (contractEntity == null || string.IsNullOrWhiteSpace(contractEntity.EmailPPJK))
             {
-                if (command.emailCC.Count < 1) return; // Tidak ada alamat email penerima.
-                emailTo = command.emailCC[0];
-                if (command.emailCC.Count > 1)
-                command.emailCC.RemoveAt(0);
+                return; // Tidak ada alamat email penerima.
             }
             else
             {
@@ -504,9 +503,7 @@ namespace GoLogs.Api.BusinessLogic.Handler
                 var contractNumber = dEntity != null ? dEntity.ContractNumber : sEntity.ContractNumber;
                 if (string.IsNullOrWhiteSpace(contractNumber))
                 {
-                    if (command.emailCC.Count < 1) return; // Tidak ada alamat email penerima.
-                    emailTo = command.emailCC[0];
-                    command.emailCC.RemoveAt(0);
+                    return; // Tidak ada alamat email penerima.
                 }
                 else
                 {
@@ -515,10 +512,7 @@ namespace GoLogs.Api.BusinessLogic.Handler
                     .SingleOrDefaultAsync();
                     if (cEntity == null || string.IsNullOrWhiteSpace(cEntity.EmailPPJK))
                     {
-                        if (command.emailCC.Count < 1) return; // Tidak ada alamat email penerima.
-                        emailTo = command.emailCC[0];
-                        if (command.emailCC.Count > 1)
-                        command.emailCC.RemoveAt(0);
+                        return; // Tidak ada alamat email penerima.
                     }
                     else
                     {
