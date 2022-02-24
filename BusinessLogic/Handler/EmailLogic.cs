@@ -475,6 +475,7 @@ namespace GoLogs.Api.BusinessLogic.Handler
 
             doView = _mapper.Map<DeliveryOrderModel, DeliveryOrderViewModel>(doEntity);
             doView.DOContainerData = containerEntity;
+            doView.DeliveryOrderStatus = doEntity.PositionStatusName;
         }
 
         public async Task AfterDelegateAsync(EmailCommand command)
@@ -546,6 +547,94 @@ namespace GoLogs.Api.BusinessLogic.Handler
                     .Replace("@CreatedDate", createdDate.ToString())
                     .Replace("@Status", status)
                     .Replace("@DetailUrl", Constant.GoLogsAppDomain + "delegate/" + idEntity);
+
+                GlobalHelper.SendEmailWithCC(emailTo, command.emailCC, dSubject, dBody);
+            }
+            catch (System.Exception se)
+            {
+                throw se;
+            }
+        }
+
+        public async Task AfterForwarderDelegate(EmailCommand command)
+        {
+            try
+            {
+                string emailTo = null;
+                string customer = "pelanggan";
+                string service = "Delivery Order";
+                ContractModel cEntity;
+                
+                var dEntity = await _context.DeliveryOrders
+                .Where(w => w.JobNumber == command.JobNumber &&
+                w.ServiceName != null &&
+                w.RowStatus == 1)
+                .SingleOrDefaultAsync();
+                
+                var sEntity = await _context.SP2
+                .Where(w => w.JobNumber == command.JobNumber &&
+                w.ServiceName != null &&
+                w.RowStatus == 1)
+                .SingleOrDefaultAsync();
+
+                if (dEntity == null && sEntity == null)
+                throw new ArgumentException($"{Constant.ErrorFromServer}No delegate by jobnumber: {command.JobNumber}");
+
+                var contractNumber = dEntity != null ? dEntity.ContractNumber : sEntity.ContractNumber;
+                if (string.IsNullOrWhiteSpace(contractNumber))
+                {
+                    return; // Tidak ada alamat email penerima.
+                }
+                else
+                {
+                    cEntity = await _context.Contract
+                    .Where(w => w.ContractNumber == contractNumber)
+                    .SingleOrDefaultAsync();
+                    if (cEntity == null || string.IsNullOrWhiteSpace(cEntity.EmailPPJK))
+                    {
+                        return; // Tidak ada alamat email penerima.
+                    }
+                    else
+                    {
+                        emailTo = cEntity.EmailPPJK;
+                    }
+                }
+
+                var personEntity = await _context.Persons
+                .Where(w => w.Email == emailTo)
+                .SingleOrDefaultAsync();
+
+                var companyEntity = await _context.Companies
+                .Where(w => w.Id == cEntity.CargoOwnerId)
+                .SingleOrDefaultAsync();
+
+                customer = personEntity == null ? emailTo.Split('@')[0] : personEntity.FullName;
+                service = dEntity == null ? "SP2" : service;
+                var idEntity = dEntity == null ? sEntity.Id : dEntity.Id;
+                var requestor = dEntity == null ? sEntity.CreatedBy : dEntity.CreatedBy;
+                var delegator = dEntity == null ? sEntity.FrieghtForwarderName : dEntity.FrieghtForwarderName;
+                var delegateTo = companyEntity == null ? delegator : companyEntity.Email;
+                var fCompanyName = cEntity.FirstParty;
+                var cCompanyName = cEntity.SecondParty;
+                var createdDate = dEntity == null ? sEntity.CreatedDate : dEntity.CreatedDate;
+                var status = dEntity == null ? sEntity.PositionStatusName : dEntity.PositionStatusName;
+
+                var dEmail = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("DelegateForwarder");
+                var dSubject = dEmail.Subject
+                    .Replace("@RequestorCompanyName", fCompanyName)
+                    .Replace("@ServiceName", service)
+                    .Replace("@CustomerCompanyName", cCompanyName);
+                var dBody = dEmail.Template
+                    .Replace("@CustomerName", customer)
+                    .Replace("@ServiceName", service)
+                    .Replace("@JobNumer", command.JobNumber)
+                    .Replace("@No", "1")
+                    .Replace("@Requestor", requestor)
+                    .Replace("@DelegateTo", delegateTo)
+                    .Replace("@DelegateService", service)
+                    .Replace("@CreatedDate", createdDate.ToString())
+                    .Replace("@Status", status)
+                    .Replace("@DetailUrl", $"{Constant.GoLogsAppDomain}forwarder/{idEntity}/continue");
 
                 GlobalHelper.SendEmailWithCC(emailTo, command.emailCC, dSubject, dBody);
             }

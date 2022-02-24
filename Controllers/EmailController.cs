@@ -268,6 +268,21 @@ namespace GoLogs.Api.Controllers
         }
 
         [AllowAnonymous, HttpPost, Route("[action]")]
+        public async Task<ActionResult> AfterForwardDelegateAsync([FromBody] EmailCommand command)
+        {
+            try
+            {
+                if (command == null) return BadRequest(Constant.ErrorFromServer + "Invalid client request");
+                await _emailLogic.AfterForwarderDelegate(command);
+                return Ok("Success");
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [AllowAnonymous, HttpPost, Route("[action]")]
         public async Task<ActionResult> AfterDORequestDelegateAsync([FromBody] EmailCommand command)
         {
             try

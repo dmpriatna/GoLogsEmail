@@ -7,6 +7,7 @@ namespace GoLogs.Api.Models
     {
         [Key] public Guid Id { get; set; }
         public Guid? CompanyId { get; set; }
+        public Guid? CargoOwnerId { get; set; }
         public string ContractNumber { get; set; }
         public string EmailPPJK { get; set; }
         public string FirstParty { get; set; }
