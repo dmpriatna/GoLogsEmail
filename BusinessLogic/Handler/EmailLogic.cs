@@ -693,7 +693,7 @@ namespace GoLogs.Api.BusinessLogic.Handler
             var shippingLineStepStatus = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("ShippingLineStep1");
             shipBody = shipBody.Replace("@StepStatus", shippingLineStepStatus.Template);
 
-            GlobalHelper.SendEmailWithCC(emailTo, command.emailCC, shipSubject, shipBody);
+            GlobalHelper.SendEmailWithCC(doView.ShippingLineEmail, command.emailCC, shipSubject, shipBody);
         }
 
         public async Task AfterInvoiceDelegateAsync(EmailCommand command)
@@ -795,7 +795,7 @@ namespace GoLogs.Api.BusinessLogic.Handler
             var shippingLineStepStatus = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("ShippingLineStep3");
             shipBody = shipBody.Replace("@StepStatus", shippingLineStepStatus.Template);
 
-            GlobalHelper.SendEmailWithCC(emailTo, command.emailCC, shipSubject, shipBody);
+            GlobalHelper.SendEmailWithCC(doView.ShippingLineEmail, command.emailCC, shipSubject, shipBody);
         }
 
         public async Task AfterDOReleaseDelegateAsync(EmailCommand command)
