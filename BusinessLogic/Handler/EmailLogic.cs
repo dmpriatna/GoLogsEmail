@@ -883,7 +883,7 @@ namespace GoLogs.Api.BusinessLogic.Handler
             custBody = custBody.Replace("@FullName", fullname)
                 .Replace("@SelectedService", selectedService)
                 .Replace("@StaticTemplate", "")
-                .Replace("@StatusUrl", Constant.GoLogsAppDomain + "Custom/" + Custom.Id);
+                .Replace("@StatusUrl", Constant.GoLogsAppDomain + "custom-clearance/" + Custom.Id);
 
             // var ship = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("AfterDORequestShippingLine");
             // var shipSubject = ReplaceSubject(ship.Subject, doView.JobNumber, doEntity.FrieghtForwarderName);
@@ -1035,10 +1035,10 @@ namespace GoLogs.Api.BusinessLogic.Handler
             custBody = custBody.Replace("@FullName", fullname)
                 .Replace("@SelectedService", selectedService)
                 .Replace("@StaticTemplate", "")
-                .Replace("@DocumentUploadUrl", Constant.GoLogsAppDomain + "Custom/" + Custom.Id)
-				.Replace("@StatusUrl", Constant.GoLogsAppDomain + "Custom/" + Custom.Id)
+                .Replace("@DocumentUploadUrl", Constant.GoLogsAppDomain + "custom-clearance/" + Custom.Id)
+				.Replace("@StatusUrl", Constant.GoLogsAppDomain + "custom-clearance/" + Custom.Id)
                 .Replace("@SupportUrl", Constant.GoLogsAppDomain + Constant.SupportUrl)
-                .Replace("@SHOWDOURL", Constant.GoLogsAppDomain + "Custom/" + Custom.Id);
+                .Replace("@SHOWDOURL", Constant.GoLogsAppDomain + "custom-clearance/" + Custom.Id);
 
             // To Customer
             // DO Release Status
