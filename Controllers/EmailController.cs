@@ -342,5 +342,66 @@ namespace GoLogs.Api.Controllers
                 return BadRequest(ex.Message);
             }
         }
+
+        [AllowAnonymous, HttpPost, Route("[action]")]
+        public async Task<ActionResult> AfterCustomRequestAsync([FromBody] EmailCommand command)
+        {
+            try
+            {
+                if (command == null) return BadRequest(Constant.ErrorFromServer + "Invalid client request");
+                if (string.IsNullOrEmpty(command.BLCode)) return BadRequest(Constant.ErrorFromServer + "BL Number is required");
+                await _emailLogic.AfterCustomRequestAsync(command);
+                return Ok("Success");
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [AllowAnonymous, HttpPost, Route("[action]")]
+        public async Task<ActionResult> AfterInvoiceCustomAsync([FromBody] EmailCommand command)
+        {
+            try
+            {
+                if (command == null) return BadRequest(Constant.ErrorFromServer + "Invalid client request");
+                await _emailLogic.AfterInvoiceCustomAsync(command);
+                return Ok("Success");
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [AllowAnonymous, HttpPost, Route("[action]")]
+        public async Task<ActionResult> AfterPaymentCustomAsync([FromBody] EmailCommand command)
+        {
+            try
+            {
+                if (command == null) return BadRequest(Constant.ErrorFromServer + "Invalid client request");
+                await _emailLogic.AfterPaymentCustomAsync(command);
+                return Ok("Success");
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [AllowAnonymous, HttpPost, Route("[action]")]
+        public async Task<ActionResult> AfterCustomReleaseAsync([FromBody] EmailCommand command)
+        {
+            try
+            {
+                if (command == null) return BadRequest(Constant.ErrorFromServer + "Invalid client request");
+                await _emailLogic.AfterReleaseCustomAsync(command);
+                return Ok("Success");
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
     }
 }

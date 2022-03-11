@@ -12,6 +12,11 @@ namespace GoLogs.Api.BusinessLogic.Interfaces
         Task AfterPaymentDelegateAsync(EmailCommand command);
         Task AfterDOReleaseDelegateAsync(EmailCommand command);
 
+        Task AfterCustomRequestAsync(EmailCommand command);
+        Task AfterInvoiceCustomAsync(EmailCommand command);
+        Task AfterPaymentCustomAsync(EmailCommand command);
+        Task AfterReleaseCustomAsync(EmailCommand command);
+
         Task AfterDORequestAsync(EmailCommand command);
         Task AfterInvoiceAsync(EmailCommand command);
         Task AfterPaymentAsync(EmailCommand command);

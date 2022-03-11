@@ -836,5 +836,218 @@ namespace GoLogs.Api.BusinessLogic.Handler
         }
 
         #endregion
+
+        private CustomClearanceModel Custom { get; set; }
+
+        private async Task CustomInfo(EmailCommand command)
+        {
+            selectedService = "Custom Clearance";
+            Custom = await _context.CustomClearance
+            .Where(w => w.JobNumber == command.JobNumber)
+            .SingleOrDefaultAsync();
+
+            var companyEntity = await _context.Companies
+            .Where(w => w.Name == Custom.CargoOwnerName)
+            .FirstOrDefaultAsync();
+
+            if (companyEntity != null)
+            {
+                emailTo = companyEntity.Email;
+                personEntity = await _context.Persons
+                .Where(w => w.Email == emailTo)
+                .SingleOrDefaultAsync();
+                fullname = personEntity.FullName;
+            }
+        }
+        
+        public async Task AfterCustomRequestAsync(EmailCommand command)
+        {
+            await CustomInfo(command);
+            var signature = await GetSignature();
+            // var staticTemplate = await GetStaticTemplate(doView, fullname, doEntity.FrieghtForwarderName);
+            // var BLCodeParam = Constant.BLCodeParam.Replace("@BLCodeParam", command.BLCode);
+
+            // if (doView.DOContainerData.Count > 0)
+            // {
+            //     var containerTemplate = await GetContainers(doView.DOContainerData);
+            //     staticTemplate = staticTemplate.Replace("@ContainerRepeater", containerTemplate);
+            // }
+            // else
+            // {
+            //     staticTemplate = staticTemplate.Replace("@ContainerRepeater", "");
+            // }
+
+            var cust = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("AfterDORequestCustomer");
+            var custSubject = ReplaceSubject(cust.Subject, Custom.JobNumber);
+            var custBody = cust.Template + signature;
+            custBody = custBody.Replace("@FullName", fullname)
+                .Replace("@SelectedService", selectedService)
+                .Replace("@StaticTemplate", "")
+                .Replace("@StatusUrl", Constant.GoLogsAppDomain + "Custom/" + Custom.Id);
+
+            // var ship = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("AfterDORequestShippingLine");
+            // var shipSubject = ReplaceSubject(ship.Subject, doView.JobNumber, doEntity.FrieghtForwarderName);
+            // var shipBody = ship.Template + signature;
+            // shipBody = shipBody.Replace("@ShippingLineName", doView.ShippingLineName)
+            //     .Replace("@CompanyName", doEntity.FrieghtForwarderName + "&nbsp;")
+            //     .Replace("@SelectedService", selectedService)
+            //     .Replace("@StaticTemplate", staticTemplate)
+			// 	.Replace("@DocumentUploadUrl", Constant.GoLogsAppDomain + "order/" + doView.Id)                
+            //     .Replace("@SupportUrl", Constant.GoLogsAppDomain + Constant.SupportUrl);
+
+            // To Customer
+            // Request Form Status
+            var custStepStatus = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("CustomerStep1");
+            custBody = custBody.Replace("@StepStatus", custStepStatus.Template);
+
+            if (personEntity != null)
+            await _notifyLogic.TransactionRequestAsync(selectedService, Custom.JobNumber, personEntity.Id);
+            GlobalHelper.SendEmailWithCC(emailTo, command.emailCC, custSubject, custBody);
+
+            // To ShippingLine
+            // Confirm Request Status
+            // var shippingLineStepStatus = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("ShippingLineStep1");
+            // shipBody = shipBody.Replace("@StepStatus", shippingLineStepStatus.Template);
+
+            // GlobalHelper.SendEmailWithCC(doView.ShippingLineEmail, command.emailCC, shipSubject, shipBody);
+        }
+
+        public async Task AfterInvoiceCustomAsync(EmailCommand command)
+        {
+            await CustomInfo(command);
+            // var staticTemplate = await GetStaticTemplate(doView, fullname, doEntity.FrieghtForwarderName);
+
+            // if (doView.DOContainerData.Count > 0)
+            // {
+            //     var containerTemplate = await GetContainers(doView.DOContainerData);
+            //     staticTemplate = staticTemplate.Replace("@ContainerRepeater", containerTemplate);
+            // }
+            // else
+            // {
+            //     staticTemplate = staticTemplate.Replace("@ContainerRepeater", "");
+            // }
+
+            // var cust = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("AfterInvoice");
+            // var custSubject = ReplaceSubject(cust.Subject, doView.JobNumber);
+            // var custBody = cust.Template + await GetSignature();
+			// DateTime today = DateTime.Now;
+			// DateTime timeLimit = today.AddHours(2);
+			// string specifier;
+			// CultureInfo culture;
+			// specifier = "C";
+			// culture = CultureInfo.CreateSpecificCulture("id-ID");
+			// var proformaAmount = doView.ProformaInvoiceAmount.ToString(specifier, culture);
+			// var totalAmount = doView.ProformaInvoiceAmount + 55000;
+            // custBody = custBody.Replace("@FullName", fullname)
+            //     .Replace("@JobNo", doView.JobNumber)
+            //     .Replace("@SelectedService", selectedService)
+            //     .Replace("@StaticTemplate", staticTemplate)
+			// 	.Replace("@CompleteBeforeDate", timeLimit.ToString("dd MMMM yyyy HH:mm"))
+            //     .Replace("@BillingDetail",  Constant.GoLogsAppDomain + "do-request/" + doView.Id)
+			// 	.Replace("@ConductPaymentUrl", Constant.GoLogsAppDomain + Constant.ConductPaymentUrl)
+            //     .Replace("@SupportUrl", Constant.GoLogsAppDomain + Constant.SupportUrl)
+			// 	.Replace("@Amount", proformaAmount)
+			// 	.Replace("@ServiceFee", "Rp 50.000")
+			// 	.Replace("@AddedTax", "Rp 5.000")
+			// 	.Replace("@TotalAmount", totalAmount.ToString(specifier, culture));
+
+            // To Customer
+            // Confirmation From Shipping Line Status
+            // var custStepStatus = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("CustomerStep2");
+            // custBody = custBody.Replace("@StepStatus", custStepStatus.Template);
+
+            // if (personEntity != null)
+            // await _notifyLogic.TransactionInvoiceAsync(selectedService, doView.JobNumber, personEntity.Id);
+            // GlobalHelper.SendEmailWithCC(emailTo, command.emailCC, custSubject, custBody);
+        }
+
+        public async Task AfterPaymentCustomAsync(EmailCommand command)
+        {
+            await CustomInfo(command);
+            var signature = await GetSignature();
+            // var staticTemplate = await GetStaticTemplate(doView, fullname, doEntity.FrieghtForwarderName);
+			// var BLCodeParam = Constant.BLCodeParam.Replace("@BLCodeParam", command.BLCode);
+
+            // if (doView.DOContainerData.Count > 0)
+            // {
+            //     var containerTemplate = await GetContainers(doView.DOContainerData);
+            //     staticTemplate = staticTemplate.Replace("@ContainerRepeater", containerTemplate);
+            // }
+            // else
+            // {
+            //     staticTemplate = staticTemplate.Replace("@ContainerRepeater", "");
+            // }
+
+            var cust = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("AfterPaymentCustomer");
+            var custSubject = ReplaceSubject(cust.Subject, Custom.JobNumber);
+            var custBody = cust.Template + signature;
+            custBody = custBody.Replace("@FullName", fullname)
+                .Replace("@JobNo", Custom.JobNumber)
+                .Replace("@SelectedService", selectedService)
+                .Replace("@StaticTemplate", "")
+                .Replace("@PaymentUploadUrl", Constant.GoLogsAppDomain + Constant.PaymentUploadUrl + command.BLCode + "tab=3")
+                .Replace("@SupportUrl", Constant.GoLogsAppDomain + Constant.SupportUrl);
+
+            // var ship = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("AfterPaymentShippingLine");
+            // var shipSubject = ReplaceSubject(ship.Subject, doView.JobNumber, doEntity.FrieghtForwarderName);
+            // var shipBody = ship.Template + signature;
+            // shipBody = shipBody.Replace("@ShippingLineName", doView.ShippingLineName)
+            //     .Replace("@CompanyName", doEntity.FrieghtForwarderName + "&nbsp;")
+            //     .Replace("@SelectedService", selectedService)
+            //     .Replace("@StaticTemplate", staticTemplate)
+            //     .Replace("@DocumentUploadUrl", Constant.GoLogsAppDomain + Constant.DocumentUploadUrl + BLCodeParam + "tab=4");
+
+            // To Customer
+            // Proforma Invoice & Payment Confirmation Status
+            var custStepStatus = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("CustomerStep4");
+            custBody = custBody.Replace("@StepStatus", custStepStatus.Template);
+
+            if (personEntity != null)
+            await _notifyLogic.TransactionPaymentAsync(selectedService, Custom.JobNumber, personEntity.Id);
+            GlobalHelper.SendEmailWithCC(emailTo, command.emailCC, custSubject, custBody);
+
+            // To ShippingLine
+            // Payment Confirmation Status
+            // var shippingLineStepStatus = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("ShippingLineStep3");
+            // shipBody = shipBody.Replace("@StepStatus", shippingLineStepStatus.Template);
+
+            // GlobalHelper.SendEmailWithCC(doView.ShippingLineEmail, command.emailCC, shipSubject, shipBody);
+        }
+
+        public async Task AfterReleaseCustomAsync(EmailCommand command)
+        {
+            await CustomInfo(command);
+            // var staticTemplate = await GetStaticTemplate(doView, fullname, doEntity.FrieghtForwarderName);
+
+            // if (doView.DOContainerData.Count > 0)
+            // {
+            //     var containerTemplate = await GetContainers(doView.DOContainerData);
+            //     staticTemplate = staticTemplate.Replace("@ContainerRepeater", containerTemplate);
+            // }
+            // else
+            // {
+            //     staticTemplate = staticTemplate.Replace("@ContainerRepeater", "");
+            // }
+
+            var cust = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("AfterDORelease");
+            var custSubject = ReplaceSubject(cust.Subject, Custom.JobNumber);
+            var custBody = cust.Template + await GetSignature();
+            custBody = custBody.Replace("@FullName", fullname)
+                .Replace("@SelectedService", selectedService)
+                .Replace("@StaticTemplate", "")
+                .Replace("@DocumentUploadUrl", Constant.GoLogsAppDomain + "Custom/" + Custom.Id)
+				.Replace("@StatusUrl", Constant.GoLogsAppDomain + "Custom/" + Custom.Id)
+                .Replace("@SupportUrl", Constant.GoLogsAppDomain + Constant.SupportUrl)
+                .Replace("@SHOWDOURL", Constant.GoLogsAppDomain + "Custom/" + Custom.Id);
+
+            // To Customer
+            // DO Release Status
+            var custStepStatus = await _emailTemplateLogic.GetEmailTemplateByTypeAsync("CustomerStep5");
+            custBody = custBody.Replace("@StepStatus", custStepStatus.Template);
+
+            if (personEntity != null)
+            await _notifyLogic.TransactionReleaseAsync(selectedService, Custom.JobNumber, personEntity.Id);
+            GlobalHelper.SendEmailWithCC(emailTo, command.emailCC, custSubject, custBody);
+        }
     }
 }
