@@ -847,7 +847,7 @@ namespace GoLogs.Api.BusinessLogic.Handler
             .SingleOrDefaultAsync();
 
             var companyEntity = await _context.Companies
-            .Where(w => w.Name == Custom.CargoOwnerName)
+            .Where(w => w.Name == Custom.CreatedBy)
             .FirstOrDefaultAsync();
 
             if (companyEntity != null)
@@ -856,7 +856,7 @@ namespace GoLogs.Api.BusinessLogic.Handler
                 personEntity = await _context.Persons
                 .Where(w => w.Email == emailTo)
                 .SingleOrDefaultAsync();
-                fullname = personEntity.FullName;
+                fullname = personEntity?.FullName;
             }
         }
         
@@ -983,6 +983,8 @@ namespace GoLogs.Api.BusinessLogic.Handler
             var custBody = cust.Template + signature;
             custBody = custBody.Replace("@FullName", fullname)
                 .Replace("@JobNo", Custom.JobNumber)
+                .Replace("@Date", Custom.CreatedDate.ToString("dd-MMM-yyyy HH:mm"))
+                .Replace("<strong>DO Service</strong>", $"<strong>{selectedService}</strong>")
                 .Replace("@SelectedService", selectedService)
                 .Replace("@StaticTemplate", "")
                 .Replace("@PaymentUploadUrl", Constant.GoLogsAppDomain + Constant.PaymentUploadUrl + command.BLCode + "tab=3")
